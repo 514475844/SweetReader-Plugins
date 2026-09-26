@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+  .c18-card{background:var(--card-bg,#fff);border:1px solid rgba(128,128,128,.2);border-radius:12px;padding:18px 22px;margin-bottom:18px}
+  .c18-btn{display:inline-block;border:none;border-radius:8px;padding:9px 18px;font-size:14px;cursor:pointer;color:#fff;background:#4a7cf7;margin-right:10px}
+  .c18-btn:disabled{opacity:.5;cursor:not-allowed}
+  .c18-btn.warn{background:#e67e22}
+  .c18-btn.stop{background:#d9534f}
+  .c18-log{background:#1e1e28;color:#cde3ff;font-family:Consolas,monospace;font-size:12.5px;border-radius:10px;padding:14px;height:230px;overflow-y:auto;line-height:1.55}
+  .c18-bar{height:8px;background:rgba(128,128,128,.18);border-radius:4px;overflow:hidden;margin:8px 0}
+  .c18-bar>div{height:100%;background:#4a7cf7;transition:width .4s}
+  .c18-table{width:100%;border-collapse:collapse;font-size:13.5px}
+  .c18-table th,.c18-table td{text-align:left;padding:7px 10px;border-bottom:1px solid rgba(128,128,128,.15)}
+  .c18-table th{opacity:.65;font-weight:600}
+  .c18-stat{display:inline-block;margin-right:26px}
+  .c18-stat b{font-size:22px;margin-right:4px}
+  h2.c18{margin:4px 0 16px}
+  #c18-results{max-height:340px;overflow-y:auto;margin-top:12px}
+</style>
+
+<h2 class="c18">📚 cool18 书屋抓取</h2>
+
+<div class="c18-card">
+  <span class="c18-stat"><b>{{ imported_count }}</b>已入库作品</span>
+  <span class="c18-stat"><b style="font-size:15px">{{ imported_tids }}</b>已收录帖子</span>
+  <span class="c18-stat">分类根目录：<b style="font-size:15px">{{ cfg.get('category_root','cool18') }}</b></span>
+</div>
+
+<div class="c18-card">
+  <h3 style="margin:0 0 12px">任务</h3>
+  {% if is_admin %}
+  <button class="c18-btn" id="btn-latest" onclick="startJob('latest')">🚀 抓取最新（导入列表上的新作品）</button>
+  <button class="c18-btn warn" id="btn-update" onclick="startJob('update')">🔄 增量更新（为已入库作品追加新章节）</button>
+  <button class="c18-btn stop" id="btn-stop" onclick="stopJob()" style="display:none">⏹ 停止任务</button>
+  {% else %}
+  <p style="opacity:.6">仅管理员可执行抓取任务。</p>
+  {% endif %}
+  {% if job.kind %}
+  <div style="margin-top:14px">
+    <b>当前/上次任务：{{ job.kind }} — {{ '运行中…' if job.running else job.msg }}</b>
+    <span style="opacity:.6;margin-left:10px">{{ job.started }}{% if job.finished %} → {{ job.finished }}{% endif %}</span>
+    <div class="c18-bar"><div id="c18-fill" style="width:{% if job.total %}{{ (job.done * 100 // job.total) }}{% else %}0{% endif %}%"></div></div>
+    <div style="opacity:.6;font-size:12px">进度 {{ job.done }}/{{ job.total or '…' }}</div>
+  </div>
+  {% endif %}
+  <div class="c18-log" id="c18-log" style="margin-top:12px;display:none"></div>
+</div>
+
+<div class="c18-card">
+  <h3 style="margin:0 0 12px">🔍 搜索下载 &nbsp;/&nbsp; 📚 分类下载</h3>
+  <div style="display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center">
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="text" id="c18-kw" placeholder="书名 / 作者关键词"
+             style="padding:9px 12px;border:1px solid rgba(128,128,128,.35);border-radius:8px;width:220px;font-size:14px">
+      <button class="c18-btn" id="btn-search" onclick="doSearch()">🔍 搜索</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="text" id="c18-cat" list="c18-cat-list" placeholder="分类，如：玄幻"
+             style="padding:9px 12px;border:1px solid rgba(128,128,128,.35);border-radius:8px;width:150px;font-size:14px">
+      <datalist id="c18-cat-list">
+        <option value="都市"><option value="玄幻"><option value="伦理"><option value="校园">
+        <option value="红绿"><option value="人妻"><option value="武侠"><option value="言情">
+        <option value="乱伦"><option value="NTR"><option value="群交">
+      </datalist>
+      <button class="c18-btn" id="btn-cat" onclick="startCat()">📚 按分类抓取</button>
+    </div>
+  </div>
+  <div style="opacity:.55;font-size:12.5px;margin-top:8px">
+    搜索：勾选后点「下载选中」，自动合并该书所有分帖入库；分类：扫描最近 {{ cfg.get('cat_pages',50) }} 页列表，只导入该分类的新作品。
+  </div>
+  <div id="c18-results" style="display:none">
+    <table class="c18-table">
+      <tr><th style="width:30px"></th><th>标题</th><th>作者</th><th>分类</th><th>章节</th></tr>
+      <tbody id="c18-rows"></tbody>
+    </table>
+    <button class="c18-btn" id="btn-dl" onclick="downloadSelected()">⬇ 下载选中到书目录</button>
+    <label style="font-size:13px;opacity:.7;margin-left:10px"><input type="checkbox" id="c18-all" onclick="toggleAll()"> 全选</label>
+  </div>
+</div>
+
+<div class="c18-card">
+  <h3 style="margin:0 0 12px">已入库作品（{{ stories|length }}）</h3>
+  <table class="c18-table">
+    <tr><th>书名</th><th>作者</th><th>分类</th><th>分帖数</th><th>大小</th><th></th></tr>
+    {% for m in stories %}
+    {% set b = books.get(m.book_id) %}
+    <tr>
+      <td>{% if b %}<a href="/read/{{ b.id }}">{{ m.title }}</a>{% else %}{{ m.title }}{% endif %}</td>
+      <td>{% set b2 = books.get(m.book_id) %}{{ (b2.author or '') if b2 else '' }}</td>
+      <td>{{ m.cat or '未分类' }}</td>
+      <td>{{ m.tids|length }}</td>
+      <td>{% if b %}{{ ((b.file_size or 0) / 1024) | round(0) | int }} KB{% endif %}</td>
+      <td>{% if b %}<a href="/read/{{ b.id }}">阅读</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    {% if not stories %}<tr><td colspan="6" style="opacity:.55">还没有入库作品，点上面的「抓取最新」或用搜索下载开始。</td></tr>{% endif %}
+  </table>
+</div>
+
+<script>
+var URLS = {
+  start:'{{ urls.start if urls and urls.start else "/plugin/cool18/start" }}',
+  stop:'{{ urls.stop if urls and urls.stop else "/plugin/cool18/stop" }}',
+  status:'{{ urls.status if urls and urls.status else "/plugin/cool18/status" }}',
+  search:'{{ urls.search if urls and urls.search else "/plugin/cool18/search" }}'
+};
+function startJob(kind){
+  if(kind==='latest' && !confirm('开始抓取最新作品？抓取可能持续较长时间。')) return;
+  post('start','kind='+kind);
+}
+function startCat(){
+  var cat=document.getElementById('c18-cat').value.trim();
+  if(!cat){alert('请先输入或选择分类');return;}
+  if(!confirm('按「'+cat+'」分类抓取？将扫描最近列表页，只导入该分类的新作品。')) return;
+  post('start','kind=by_cat&tids='+encodeURIComponent('cat='+cat));
+}
+function stopJob(){
+  if(!confirm('确认停止当前任务？')) return;
+  fetch(URLS.stop,{method:'POST'}).then(r=>r.json()).then(d=>{alert(d.msg);});
+}
+function post(action, body){
+  return fetch(URLS[action],{method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body: body||''}).then(r=>r.json());
+}
+function doSearch(){
+  var kw=document.getElementById('c18-kw').value.trim();
+  if(!kw) return;
+  var btn=document.getElementById('btn-search'); btn.disabled=true; btn.textContent='搜索中…';
+  fetch(URLS.search+'?kw='+encodeURIComponent(kw)).then(r=>r.json()).then(d=>{
+    btn.disabled=false; btn.textContent='搜索';
+    var box=document.getElementById('c18-results'), rows=document.getElementById('c18-rows');
+    rows.innerHTML='';
+    if(!d.ok){alert(d.msg||'搜索失败');box.style.display='none';return;}
+    d.items.forEach(function(it){
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td><input type="checkbox" class="c18-chk" value="'+it.tid+'"></td>'+
+        '<td>'+it.title+'</td><td>'+(it.author||'')+'</td><td>'+(it.cat||'')+'</td><td>'+(it.ch||'')+'</td>';
+      tr.dataset.tid=it.tid; tr.dataset.subject=it.subject;
+      rows.appendChild(tr);
+    });
+    box.style.display=d.items.length?'block':'none';
+    if(!d.items.length) alert('没有搜索到结果');
+  }).catch(()=>{btn.disabled=false;btn.textContent='搜索';});
+}
+function toggleAll(){
+  var v=document.getElementById('c18-all').checked;
+  document.querySelectorAll('.c18-chk').forEach(function(c){c.checked=v;});
+}
+function downloadSelected(){
+  var sel=[];
+  document.querySelectorAll('.c18-chk').forEach(function(c){ if(c.checked) sel.push(c.value); });
+  if(!sel.length){alert('请先勾选要下载的书');return;}
+  if(!confirm('下载选中的 '+sel.length+' 个帖子（自动按书合并）？')) return;
+  post('start','kind=search&tids='+sel.join(',')).then(d=>{
+    if(!d.ok){alert(d.msg);return;}
+    document.getElementById('c18-log').style.display='block';
+  });
+}
+var polling=false;
+function poll(){
+  if(polling) return; polling=true;
+  fetch(URLS.status).then(r=>r.json()).then(d=>{
+    polling=false;
+    var j=d.job, log=document.getElementById('c18-log');
+    log.style.display='block';
+    log.textContent=j.log.join('\n');
+    log.scrollTop=log.scrollHeight;
+    var pct=j.total?Math.round(j.done*100/j.total):0;
+    var fill=document.getElementById('c18-fill');
+    if(fill) fill.style.width=pct+'%';
+    ['btn-latest','btn-update','btn-dl','btn-cat'].forEach(function(id){
+      var b=document.getElementById(id); if(b) b.disabled=j.running;
+    });
+    var sb=document.getElementById('btn-stop');
+    if(sb) sb.style.display=j.running?'inline-block':'none';
+    if(j.running) setTimeout(poll,1500);
+    else if(log.dataset.wasRunning==='1'){ setTimeout(function(){location.reload();},800); }
+    log.dataset.wasRunning=j.running?'1':'0';
+  }).catch(()=>{polling=false;});
+}
+poll();
+</script>
+{% endblock %}
