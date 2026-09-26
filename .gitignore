@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.DS_Store
+
+# 本地部署/调试产物
+*.local
+.vscode/
+.idea/
