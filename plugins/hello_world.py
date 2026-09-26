@@ -1,7 +1,7 @@
 """示例插件：Hello World（最小可部署插件）。
 
 部署：把本文件复制到宿主机
-    /mnt/sata1-1/SweetReader/instance/plugins/hello_world.py
+    <宿主部署目录>/instance/plugins/hello_world.py
 （该目录挂载到容器 /app/instance/plugins/）
 然后 docker restart sweetreader（或在插件管理页点「重新扫描」）。
 插件即在首页「扩展功能」面板与管理员侧栏出现入口。

@@ -121,7 +121,7 @@ PLUGIN = Plugin(
     blueprint=bp,
     enabled_by_default=True,
     settings_schema=[
-        {'key': 'proxy_url', 'label': '抓取代理地址', 'type': 'text', 'default': 'http://192.168.10.121:10808',
+        {'key': 'proxy_url', 'label': '抓取代理地址', 'type': 'text', 'default': '',
          'help': 'canovel 有 Cloudflare 盾，服务器需借道代理（留空则直连）'},
         {'key': 'pages', 'label': '抓取列表页数', 'type': 'int', 'default': 5, 'min': 1, 'max': 500,
          'help': '「抓取最新」扫描的站点列表页数，每页 10 帖'},

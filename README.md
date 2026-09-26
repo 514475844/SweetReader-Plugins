@@ -94,7 +94,7 @@ PLUGIN = Plugin(
 插件目录在宿主机上挂载自容器，路径是：
 
 ```
-宿主机：/mnt/sata1-1/SweetReader/instance/plugins/<你的插件id>.py
+宿主机：<宿主部署目录>/instance/plugins/<你的插件id>.py
 容器：  /app/instance/plugins/<你的插件id>.py
 ```
 
@@ -124,5 +124,5 @@ PLUGIN = Plugin(
 ## 远程部署小贴士（可选）
 
 如果在本机用 `tools/ssh_run.py`（核心仓库里）做自动同步，可写个小脚本把 `plugins/*.py`  
-逐个 `scp`/put 到 `/mnt/sata1-1/SweetReader/instance/plugins/`，再 restart。本项目不耦合核心仓库，  
+逐个 `scp`/put 到 `<宿主部署目录>/instance/plugins/`，再 restart。本项目不耦合核心仓库，  
 保持“源码在此、部署到实例”的清晰边界。

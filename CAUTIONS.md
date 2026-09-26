@@ -59,13 +59,13 @@ root = Category(name=root_name, path=root_name,
 
 ---
 
-## 4. 代理依赖（Cloudflare 盾站点）
+## 4. 代理（可选，默认直连）
 
-`aaanovel.com` 有 Cloudflare 盾，必须走代理。设置项 `proxy_url` 默认
-`http://192.168.10.121:10808`（你 Windows 上的 v2rayN）。
+`aaanovel.com` 等部分站点有 Cloudflare 盾，如需抓取可填 `proxy_url`（设置项，默认**空 = 直连**）。
+填的是「可达的代理地址」——例如你自己起的、容器能访问到的代理（**不是** Windows 本机的 v2rayN，容器通常连不到）。
 
-**坑**：容器跑在 OpenWrt 上，**连不上你 Windows 主机的这个代理** → 报 `No route to host`，该站抓取全失败。
-要么在 OpenWrt / 容器侧也起一个可达的代理并把 `proxy_url` 改过去，要么保证那台 Windows 一直开机且 v2rayN 在跑。
+**坑**：若填了代理但它不可达 → 报 `No route to host`。框架已内置兜底：代理失败自动降级**直连**并告警，
+不会让整条抓取线程崩溃；Cloudflare 站点会优雅失败（日志可见）。
 
 ---
 
@@ -96,15 +96,15 @@ register_blueprint can no longer be called on the application. It has already ha
 
 ## 8. 部署与刷新
 
-见 `README.md`。要点：复制到宿主机 `/mnt/sata1-1/SweetReader/instance/plugins/`
+见 `README.md`。要点：复制到宿主机 `<宿主部署目录>/instance/plugins/`
 （挂容器 `/app/instance/plugins/`），重启或重新扫描。改完**强刷浏览器（Ctrl+F5）**拉取新资源。
 
 ---
 
 ## 9. 隐私提醒（与本仓库相关）
 
-- 本仓库已设为 **public**。抓取插件里有站点域名、以及默认代理地址 `192.168.10.121:10808`（局域网 IP，非公网）。
-  若不想公开，去 GitHub 仓库 Settings 改回 private，或把代理地址改成占位符再提交。
+- 本仓库已设为 **public**。抓取插件里只有站点域名，**不含任何内网 IP / 代理地址**（原先默认填的局域网代理 IP 已改为默认直连）。
+  若不想公开，去 GitHub 仓库 Settings 改回 private。
 - 核心仓库的 `sync_push` 脱敏闸门会自动删除路径 / 内网 IP / 设备名等敏感特征，**但本独立仓库不走那套**，
   提交前自己留意别带进真实密钥 / token。
 
@@ -121,7 +121,7 @@ register_blueprint can no longer be called on the application. It has already ha
    数据层的 16 个历史孤儿也已重挂到 `books` 下。
 2. **biquge365 不支持 `kind=latest`**：原 `run_job` 仅支持 `by_cat`/`search`/`update`，传 `latest` 报「未知任务类型」。
    现已加 `elif kind == 'latest':`，退化为「遍历全部分类抓取」（与 `by_cat` 同逻辑），与其他家族一致。
-3. **aaanovel 代理不可达硬崩**：`_wpsites_impl._fetch` 原在代理（`proxy_url`，默认 `192.168.10.121:10808`）不可达时直接抛
+3. **aaanovel 代理不可达硬崩**：`_wpsites_impl._fetch` 原在代理（`proxy_url`）不可达时直接抛
    `No route to host` 中断。现已加 `_PROXY_DEAD` 标记：代理失败自动降级**直连**并告警，非 Cloudflare 站点仍可抓取；
    Cloudflare 盾站点会优雅失败（日志可见），不再整线程崩溃。
 

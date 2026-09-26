@@ -119,7 +119,7 @@ PLUGIN = Plugin(
     blueprint=bp,
     enabled_by_default=True,
     settings_schema=[
-        {'key': 'proxy_url', 'label': '抓取代理地址', 'type': 'text', 'default': 'http://192.168.10.121:10808',
+        {'key': 'proxy_url', 'label': '抓取代理地址', 'type': 'text', 'default': '',
          'help': 'springnovel.com 需借道代理访问（留空直连）'},
         {'key': 'pages', 'label': '抓取列表页数', 'type': 'int', 'default': 5, 'min': 1, 'max': 500},
         {'key': 'cat_pages', 'label': '按分类抓取页数', 'type': 'int', 'default': 20, 'min': 1, 'max': 500},

@@ -44,7 +44,7 @@
 
 1. **站点根分类 `parent_id=NULL`**（`_wpsites_impl.py:309`、`_biqu_impl.py:338`）→ 侧栏不可见。
    线上数据已修复（16 个孤儿重新挂到 `books`），**但源码待修**：按 `CAUTIONS.md` 第 1 条改成 `parent_id=books.id`。
-2. **aaanovel 需代理**（`proxy_url` 默认 `http://192.168.10.121:10808`，你 Windows 的 v2rayN），容器连不上就 `No route to host`。
+2. **aaanovel 需代理**（`proxy_url` 默认空 = 直连；填了代理但容器连不到就 `No route to host`，框架会自动降级直连）。
 3. **biquge365 不支持 `kind=latest`**，用 `by_cat` / `search` / `update`。
 4. 抓取线程跑在容器里，关 Windows 不影响（除代理站点）；`docker restart` 会中断未完成的抓取。
 

@@ -122,7 +122,7 @@ PLUGIN = Plugin(
         {'key': 'delay', 'label': '抓取间隔(秒)', 'type': 'float', 'default': 0.5, 'min': 0.2, 'max': 5},
         {'key': 'min_size', 'label': '最小字数', 'type': 'int', 'default': 1000, 'min': 0},
         {'key': 'proxy_url', 'label': '代理地址(可选)', 'type': 'text', 'default': '',
-         'help': '一般无需代理；被墙时再填 http://192.168.10.121:10808'},
+         'help': '一般无需代理；被墙时再填可达的代理地址（留空直连）'},
         {'key': 'category_root', 'label': '分类根目录名', 'type': 'text', 'default': 'ranwen8'},
     ],
 )
