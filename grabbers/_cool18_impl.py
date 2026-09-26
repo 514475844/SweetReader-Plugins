@@ -395,12 +395,21 @@ def _get_category(name, root_name):
         root = Category(name=root_name, path=root_name, level=0, book_count=0)
         db.session.add(root)
         db.session.flush()
+        # [FIX] 站点根分类必须挂到图书馆(books)根下，否则成为顶层孤儿、侧栏不可见
+        if root.parent_id is None:
+            _lib = Category.query.filter_by(name='books', parent_id=None).first()
+            if _lib is None:
+                _lib = Category.query.filter_by(parent_id=None).first()
+            if _lib is not None and _lib.id != root.id:
+                root.parent_id = _lib.id
+                root.level = 1
+                db.session.flush()
     if not name or name == root_name:
         return root
     full = "%s/%s" % (root_name, name)
     cat = Category.query.filter(Category.path == full).first()
     if not cat:
-        cat = Category(name=name, path=full, parent_id=root.id, level=1, book_count=0)
+        cat = Category(name=name, path=full, parent_id=root.id, level=(root.level or 0) + 1, book_count=0)
         db.session.add(cat)
         db.session.flush()
     return cat

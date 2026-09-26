@@ -338,10 +338,19 @@ def _get_category(name, root_name):
         root = Category(name=root_name, path=root_name, level=0, book_count=0)
         db.session.add(root)
         db.session.flush()
+        # [FIX] 站点根分类必须挂到图书馆(books)根下，否则成为顶层孤儿、侧栏不可见
+        if root.parent_id is None:
+            _lib = Category.query.filter_by(name='books', parent_id=None).first()
+            if _lib is None:
+                _lib = Category.query.filter_by(parent_id=None).first()
+            if _lib is not None and _lib.id != root.id:
+                root.parent_id = _lib.id
+                root.level = 1
+                db.session.flush()
     full = '%s/%s' % (root_name, name)
     cat = Category.query.filter(Category.path == full).first()
     if not cat:
-        cat = Category(name=name, path=full, parent_id=root.id, level=1, book_count=0)
+        cat = Category(name=name, path=full, parent_id=root.id, level=(root.level or 0) + 1, book_count=0)
         db.session.add(cat)
         db.session.flush()
     return cat
@@ -504,6 +513,48 @@ def run_job(JOB, PLUGIN_ID, site, kind, arg=''):
                 except Exception as e:
                     _jlog(JOB, '  %s 检查失败：%s' % (meta['title'][:16], str(e)[:40]))
             _jlog(JOB, '更新完成：%d 本' % upd)
+        elif kind == 'latest':
+            # 站点按分类组织，无“最新”概念：退化为遍历全部分类抓取
+            cats = []
+            try:
+                cats = _adapter(PLUGIN_ID)['cats'](PLUGIN_ID) or []
+            except Exception as e:
+                _jlog(JOB, '获取分类列表失败：%s' % str(e)[:60])
+            _jlog(JOB, 'latest：遍历全部分类抓取（%d 个）' % len(cats))
+            books, seen, cp = [], set(), ''
+            for c in cats:
+                if not alive():
+                    break
+                cp = (c.get('path') or '').strip().strip('/')
+                if not cp:
+                    continue
+                pages_n = min(200, max(1, int(cfg.get('cat_pages', 5) or 5)))
+                for p in range(1, pages_n + 1):
+                    if not alive():
+                        break
+                    try:
+                        its = a['books'](PLUGIN_ID, cp, p)
+                    except Exception as e:
+                        _jlog(JOB, '分类 %s 第 %d 页失败：%s' % (cp, p, str(e)[:60]))
+                        break
+                    add = [x for x in its if x['book'] not in seen
+                           and x['book'] not in st.get('imported', {})]
+                    for x in add:
+                        seen.add(x['book'])
+                    books += add
+                    _jlog(JOB, '分类 %s 第 %d 页：+%d 本（累计 %d）' % (cp, p, len(add), len(books)))
+                    time.sleep(0.4)
+                    if not add:
+                        break
+            _jlog(JOB, '待导入 %d 本' % len(books))
+            JOB['total'] = len(books)
+            for idx, item in enumerate(books):
+                if not alive():
+                    break
+                JOB['done'] = idx
+                _jlog(JOB, '导入《%s》…' % item['title'][:24])
+                _import_book(JOB, PLUGIN_ID, site, item, st, cat_hint=cp)
+            JOB['done'] = len(books)
         else:
             JOB['msg'] = '未知任务类型'
             return

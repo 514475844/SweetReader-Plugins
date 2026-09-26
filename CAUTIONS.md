@@ -107,3 +107,23 @@ register_blueprint can no longer be called on the application. It has already ha
   若不想公开，去 GitHub 仓库 Settings 改回 private，或把代理地址改成占位符再提交。
 - 核心仓库的 `sync_push` 脱敏闸门会自动删除路径 / 内网 IP / 设备名等敏感特征，**但本独立仓库不走那套**，
   提交前自己留意别带进真实密钥 / token。
+
+---
+
+## 10. 已修复记录（v2.8）
+
+以下曾为 BUG，现已在抓取插件源码层根治（改动见 `grabbers/` 各 `_*_impl.py`）：
+
+1. **建分类孤儿（最严重）**：`_get_category` 建站点根分类时 `parent_id=NULL`，导致分类成为 `books` 的兄弟而非子节点，
+   整棵从侧栏消失。已在 `_wpsites_impl.py` / `_cool18_impl.py` / `_canovel_impl.py` / `_biqu_impl.py` 中修复：
+   建根后若 `parent_id is None`，自动挂到 `books`（图书馆根），`level=1`；子分类 `level` 跟随父级。
+   同时修正了 `book_count` 直接计数导致文件夹分类被噪声过滤隐藏的问题（框架侧已加 `has_children` 例外）。
+   数据层的 16 个历史孤儿也已重挂到 `books` 下。
+2. **biquge365 不支持 `kind=latest`**：原 `run_job` 仅支持 `by_cat`/`search`/`update`，传 `latest` 报「未知任务类型」。
+   现已加 `elif kind == 'latest':`，退化为「遍历全部分类抓取」（与 `by_cat` 同逻辑），与其他家族一致。
+3. **aaanovel 代理不可达硬崩**：`_wpsites_impl._fetch` 原在代理（`proxy_url`，默认 `192.168.10.121:10808`）不可达时直接抛
+   `No route to host` 中断。现已加 `_PROXY_DEAD` 标记：代理失败自动降级**直连**并告警，非 Cloudflare 站点仍可抓取；
+   Cloudflare 盾站点会优雅失败（日志可见），不再整线程崩溃。
+
+> 回归：修复后全站核心页面探针 **35/35 PASS**；biquge365 `latest` 触发返回 `ok:True` 且 `kind=latest` 运行中；
+> 孤儿修复在真实库内联验证 `parent_id=1, level=1` PASS。

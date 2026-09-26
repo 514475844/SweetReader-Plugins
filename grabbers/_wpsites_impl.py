@@ -80,26 +80,42 @@ def _cfg(PLUGIN_ID):
     return registry.get_settings(PLUGIN_ID)
 
 
-def _opener(PLUGIN_ID):
+_PROXY_DEAD = {}  # PLUGIN_ID -> True：本次进程内探测到代理不可达，改直连
+
+
+def _opener(PLUGIN_ID, use_proxy=True):
     px = (_cfg(PLUGIN_ID).get('proxy_url') or '').strip()
-    h = urllib.request.ProxyHandler({'http': px, 'https': px} if px else {})
+    if use_proxy and px and not _PROXY_DEAD.get(PLUGIN_ID, False):
+        h = urllib.request.ProxyHandler({'http': px, 'https': px})
+    else:
+        h = urllib.request.ProxyHandler({})
     return urllib.request.build_opener(h, urllib.request.HTTPSHandler(context=_SSL))
 
 
 def _fetch(PLUGIN_ID, url, timeout=30, retries=2):
     last = None
-    for i in range(retries + 1):
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": UA,
-                                                       "Accept": "text/html,*/*;q=0.8",
-                                                       "Accept-Language": "zh-CN,zh;q=0.9"})
-            raw = _opener(PLUGIN_ID).open(req, timeout=timeout).read()
-            if b"Just a moment" in raw[:600] or b"cf-chl" in raw[:1200]:
-                raise RuntimeError('cloudflare-challenge')
-            return raw.decode('utf-8', 'ignore')
-        except Exception as e:
-            last = e
-            time.sleep(2.0 * (i + 1))
+    px = (_cfg(PLUGIN_ID).get('proxy_url') or '').strip()
+    use_proxy_first = bool(px) and not _PROXY_DEAD.get(PLUGIN_ID, False)
+    orders = [True, False] if use_proxy_first else [False]  # 先代理，失败降级直连
+    for use_proxy in orders:
+        for i in range(retries + 1):
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": UA,
+                                                           "Accept": "text/html,*/*;q=0.8",
+                                                           "Accept-Language": "zh-CN,zh;q=0.9"})
+                raw = _opener(PLUGIN_ID, use_proxy=use_proxy).open(req, timeout=timeout).read()
+                if b"Just a moment" in raw[:600] or b"cf-chl" in raw[:1200]:
+                    raise RuntimeError('cloudflare-challenge')
+                return raw.decode('utf-8', 'ignore')
+            except Exception as e:
+                last = e
+                msg = str(e)
+                # 代理不可达：标记后跳出本序，改用直连（保留清晰日志由调用方记录）
+                if use_proxy and ('No route to host' in msg or 'getaddrinfo' in msg
+                                  or 'Connection refused' in msg or 'proxy' in msg.lower()):
+                    _PROXY_DEAD[PLUGIN_ID] = True
+                    break
+                time.sleep(2.0 * (i + 1))
     raise last
 
 
@@ -309,10 +325,19 @@ def _get_category(name, root_name):
         root = Category(name=root_name, path=root_name, level=0, book_count=0)
         db.session.add(root)
         db.session.flush()
+        # [FIX] 站点根分类必须挂到图书馆(books)根下，否则成为顶层孤儿、侧栏不可见
+        if root.parent_id is None:
+            _lib = Category.query.filter_by(name='books', parent_id=None).first()
+            if _lib is None:
+                _lib = Category.query.filter_by(parent_id=None).first()
+            if _lib is not None and _lib.id != root.id:
+                root.parent_id = _lib.id
+                root.level = 1
+                db.session.flush()
     full = '%s/%s' % (root_name, name)
     cat = Category.query.filter(Category.path == full).first()
     if not cat:
-        cat = Category(name=name, path=full, parent_id=root.id, level=1, book_count=0)
+        cat = Category(name=name, path=full, parent_id=root.id, level=(root.level or 0) + 1, book_count=0)
         db.session.add(cat)
         db.session.flush()
     return cat
