@@ -331,9 +331,15 @@ def _initial_of(title):
         return 'Other'
 
 
+_JUNK_ROOT_RE = re.compile(
+    r'^(第[0-9零一二三四五六七八九十百千两]+[章节卷回话篇集部]|序章?|序言?|楔子|前言|引言|'
+    r'内容简介?|书籍介绍|作品介绍|小说介绍|正文[卷集]?|终章?|番外|后记|尾声)', re.I)
+
+
 def _get_category(name, root_name):
     name = name or '未分类'
-    root = Category.query.filter(Category.path == root_name).first()
+    root = Category.query.filter(
+        Category.path.in_([root_name, '其他书/' + root_name])).first()
     if not root:
         root = Category(name=root_name, path=root_name, level=0, book_count=0)
         db.session.add(root)
@@ -347,6 +353,23 @@ def _get_category(name, root_name):
                 root.parent_id = _lib.id
                 root.level = 1
                 db.session.flush()
+            # [FIX2] 章节名/乱码名根分类归入「其他书」，避免每次抓取污染顶层目录
+            _nm = (root_name or '').strip()
+            if (_JUNK_ROOT_RE.match(_nm) or 'font size=2' in _nm
+                    or _nm.startswith('img src=') or '\ufffd' in _nm):
+                _other = Category.query.filter(Category.path == '其他书').first()
+                if _other is None:
+                    _lib2 = Category.query.filter_by(name='books', parent_id=None).first()
+                    _other = Category(name='其他书', path='其他书',
+                                      parent_id=(_lib2.id if _lib2 else 1),
+                                      level=1, book_count=0)
+                    db.session.add(_other)
+                    db.session.flush()
+                if root.id != _other.id:
+                    root.parent_id = _other.id
+                    root.level = (_other.level or 1) + 1
+                    root.path = '其他书/' + root_name
+                    db.session.flush()
     full = '%s/%s' % (root_name, name)
     cat = Category.query.filter(Category.path == full).first()
     if not cat:
